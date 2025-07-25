@@ -3,11 +3,15 @@ import math
 import googlemaps
 import re
 from fpdf import FPDF
+import smtplib
+from email.message import EmailMessage
+import os
 
 # Load Google Maps API key securely
 gmaps = googlemaps.Client(key=st.secrets["googlemaps"]["api_key"])
 
 # ─── Constants ──────────────────────────────────────────────────────────
+
 COST_TABLE = {
     'Small': {
         'Easy': {'Excavation': 3791, 'Pool Work': 5391, 'Liner': 1178},
@@ -27,28 +31,36 @@ COST_TABLE = {
 }
 
 INSTALL_COST = {'Small': 281.69, 'Medium': 388.49, 'Large': 495.29}
+
 PERMIT_COSTS = {
     'burlington': 1000, 'oakville': 1000,
     'mississauga': 500, 'toronto': 500, 'brampton': 500,
     'etobicoke': 500, 'hamilton': 500
 }
+
 FIXED_COSTS = {
     'Plumbing': 1800.00, 'Heater': 3067.73, 'Filter': 1192.50,
-    'Pump': 1490.69, 'SaltSystem': 1348.35 + 100.00,  # + $100 for salt
+    'SaltSystem': 1348.35 + 100.00,  # + $100 for salt
     'Transformer': 140.33, 'DrainKit': 362.80, 'WinterCoverLabour': 300.00
 }
 
+# Pumps list for drop down and their costs
+PUMP_OPTIONS = {
+    "Jandy VSFHP165AUT, VS FloPro Variable Speed Pump W/O JEP-R": 1217.14,
+    "Jandy VS FloPro 1.65 HP Variable-Speed Pump, 115/230 VAC, w/SpeedSet Control": 1490.69,
+    "Jandy VS FloPro 1.85 HP Variable-Speed Pump 115/230 VAC, 2 AUX Relays": 1380.21,
+    "Jandy VS FloPro 2.7 HP Variable-Speed Pump, 115/230 Vac, 2 Aux Relays, w/o": 1870.46,
+}
+
 # ─── Helper Functions ───────────────────────────────────────────────────
+
 def sanitize_filename(address: str) -> str:
     clean = re.sub(r'[^\w\s]', '', address)
     return "_".join(clean.strip().split())
 
-
 def get_city(address: str) -> str:
-    import re
     match = re.search(r'([\w\s\-]+?),\s*(ON|Ontario)', address, re.IGNORECASE)
     return match.group(1).strip().lower() if match else ''
-
 
 def get_permit_cost(address: str) -> float:
     city = get_city(address)
@@ -57,13 +69,11 @@ def get_permit_cost(address: str) -> float:
             return PERMIT_COSTS[key]
     return 0
 
-
 def calculate_difficulty(distance_ft, access_in):
     dist_factor = 1 if distance_ft <= 70 else 2 if distance_ft <= 120 else 3
     acc_factor = 2 if access_in < 70 else 1
     score = dist_factor * acc_factor
     return "Easy" if score == 1 else "Moderate" if score == 2 else "Difficult"
-
 
 @st.cache_data(show_spinner=False)
 def get_drive_km_and_time(origin, destination):
@@ -73,36 +83,55 @@ def get_drive_km_and_time(origin, destination):
     hrs = element['duration']['value'] / 3600
     return km, hrs
 
-
 def generate_pdf(data: dict, filename: str):
     pdf = FPDF()
     pdf.add_page()
-
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(0, 10, "Vinyl Pool Estimate", ln=True, align="C")
     pdf.ln(5)
-
     pdf.set_font("Arial", '', 12)
     for k, v in data['summary'].items():
         pdf.cell(70, 8, f"{k}:", 0)
         pdf.cell(0, 8, str(v), ln=True)
-
-    pdf.ln(6)
+        pdf.ln(6)
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 10, "Cost Breakdown", ln=True)
-
     pdf.set_font("Arial", '', 12)
     for k, v in data['costs'].items():
         pdf.cell(90, 8, f"{k}:", 0)
         pdf.cell(0, 8, f"${v:,.2f}", ln=True, align="R")
-
-    pdf.ln(5)
+        pdf.ln(5)
     pdf.set_font("Arial", 'B', 14)
     total = data['costs'].get("Total", 0)
     pdf.cell(0, 10, f"Total Estimated Build Cost: ${total:,.2f}", ln=True)
     pdf.output(filename)
 
+def send_email_with_attachment(sender_email, sender_password, recipient_email, subject, body, attachment_path):
+    msg = EmailMessage()
+    msg['From'] = sender_email
+    msg['To'] = recipient_email
+    msg['Subject'] = subject
+    msg.set_content(body)
+
+    with open(attachment_path, 'rb') as f:
+        file_data = f.read()
+        file_name = os.path.basename(attachment_path)
+    msg.add_attachment(file_data, maintype='application', subtype='pdf', filename=file_name)
+
+    # Set up SMTP server (modify SMTP details accordingly)
+    smtp_server = "smtp.gmail.com"
+    smtp_port = 587
+    try:
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+        return True, "Email sent successfully."
+    except Exception as e:
+        return False, f"Failed to send email: {e}"
+
 # ─── Streamlit UI ───────────────────────────────────────────────────────
+
 st.title("📐 Vinyl Pool Cost Estimator")
 
 with st.form("pool_form"):
@@ -115,7 +144,10 @@ with st.form("pool_form"):
     steps = st.radio("Fibreglass steps?", ["Yes", "No"])
     tracking = st.radio("Tracking Type", ["Side Mount Single Track", "Bullnose Single Track"])
     lights = st.number_input("Number of Lights", min_value=0, step=1)
-
+    
+    # Pump selection dropdown added here
+    selected_pump = st.selectbox("Select Pump Model", options=list(PUMP_OPTIONS.keys()))
+    
     submit = st.form_submit_button("📄 Generate Estimate")
 
 if submit:
@@ -124,18 +156,14 @@ if submit:
     category = 'Small' if linear_feet <= 76 else 'Medium' if linear_feet <= 104 else 'Large'
     difficulty = calculate_difficulty(dist_to_pool, access_in)
     permit_cost = get_permit_cost(address)
-
     drive_km, drive_hr = get_drive_km_and_time("5491 Appleby Line, Burlington, ON", address)
     drive_cost = drive_hr * 35 * 26 * 4
-
     costs = COST_TABLE[category][difficulty]
     base_liner = INSTALL_COST[category]
     extra = (linear_feet * 22.12) if steps == "Yes" else (linear_feet * 22.12 + 300)
-
     rounded = math.ceil(linear_feet / 10) * 10
     track_rate = 4.27 if tracking == "Side Mount Single Track" else 8.39
     tracking_cost = rounded * track_rate
-
     hpb = linear_feet * 7.25
     steel = linear_feet * 50
     concrete = sqft * 5.25
@@ -143,6 +171,9 @@ if submit:
     winter_area = sqft * 3.50
     lights_total = lights * 366.65
     transformer = FIXED_COSTS["Transformer"] if lights > 0 else 0
+    
+    # Use selected pump cost instead of fixed pump cost
+    pump_cost = PUMP_OPTIONS[selected_pump]
 
     total = sum([
         costs["Excavation"], costs["Pool Work"], costs["Liner"],
@@ -150,7 +181,8 @@ if submit:
         concrete, soft,
         lights_total, transformer,
         FIXED_COSTS["DrainKit"], FIXED_COSTS["Plumbing"], FIXED_COSTS["Heater"],
-        FIXED_COSTS["Filter"], FIXED_COSTS["Pump"], FIXED_COSTS["SaltSystem"],
+        FIXED_COSTS["Filter"], pump_cost,  # Use selected pump cost here
+        FIXED_COSTS["SaltSystem"],
         FIXED_COSTS["WinterCoverLabour"], winter_area,
         permit_cost, drive_cost
     ])
@@ -166,6 +198,7 @@ if submit:
         "Fibreglass Steps": steps,
         "Tracking Type": tracking,
         "Lights": lights,
+        "Pump Model": selected_pump,
         "Drive Distance": f"{drive_km:.2f} km",
         "Drive Time": f"{drive_hr*60:.0f} min"
     }
@@ -180,7 +213,8 @@ if submit:
         "Lights": lights_total, "Transformer": transformer,
         "Drain Kit": FIXED_COSTS["DrainKit"], "Plumbing": FIXED_COSTS["Plumbing"],
         "Heater": FIXED_COSTS["Heater"], "Filter": FIXED_COSTS["Filter"],
-        "Pump": FIXED_COSTS["Pump"], "Salt System (+salt)": FIXED_COSTS["SaltSystem"],
+        "Pump": pump_cost,
+        "Salt System (+salt)": FIXED_COSTS["SaltSystem"],
         "Winter Cover Area": winter_area,
         "Winter Cover Labour": FIXED_COSTS["WinterCoverLabour"],
         "Permit": permit_cost, "Drive Time Labour": drive_cost,
@@ -196,3 +230,29 @@ if submit:
 
     with open(file_path, "rb") as f:
         st.download_button("📥 Download Estimate PDF", f, file_name=file_path, mime="application/pdf")
+
+    # Email sending UI
+    st.markdown("---")
+    st.markdown("### 📧 Email Estimate PDF")
+    recipient_email = st.text_input("Recipient Email Address")
+    sender_email = st.text_input("Sender Email Address (e.g. your Gmail)")
+    sender_password = st.text_input("Sender Email Password or App Password", type="password")
+    send_email = st.button("Send Email")
+
+    if send_email:
+        if not recipient_email or not sender_email or not sender_password:
+            st.error("Please enter recipient email, sender email and password.")
+        else:
+            with st.spinner("Sending email..."):
+                success, message = send_email_with_attachment(
+                    sender_email=sender_email,
+                    sender_password=sender_password,
+                    recipient_email=recipient_email,
+                    subject="Vinyl Pool Cost Estimate",
+                    body=f"Please find attached the vinyl pool cost estimate for {address}.",
+                    attachment_path=file_path
+                )
+            if success:
+                st.success(message)
+            else:
+                st.error(message)
