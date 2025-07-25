@@ -157,10 +157,14 @@ def send_email_with_attachment(sender_email, sender_password, recipient_email, s
 
 # ─── Streamlit UI ───────────────────────────────────────────────────────
 
-st.title("📐 Vinyl Pool Cost Estimator")
+# Display your attached logo at the top
+st.image("markstone-landscaping-logo-contact-us.jpg", width=300)
+
+# Main title in bold
+st.markdown("# **📐 Vinyl Pool Cost Estimator**")
 
 with st.form("pool_form"):
-    st.markdown("### Pool Information")
+    st.markdown("## **Pool Information**")
     address = st.text_input("Full Pool Address (e.g. 2168 Highway 54, Caledonia, ON)", "")
     width = st.number_input("Pool Width (ft)", min_value=1.0, value=16.0)
     length = st.number_input("Pool Length (ft)", min_value=1.0, value=32.0)
@@ -239,22 +243,31 @@ if submit:
             "Pool Work": costs["Pool Work"],
             "Liner Labor": costs["Liner"],
             "Liner Material + Steps": base_liner + extra,
-            "HPB": hpb, "Steel": steel, "Tracking": tracking_cost,
-            "Concrete": concrete, "Softbottom": soft,
-            "Lights": lights_total, "Transformer": transformer,
-            "Drain Kit": FIXED_COSTS["DrainKit"], "Plumbing": FIXED_COSTS["Plumbing"],
-            "Heater": heater_cost, "Filter": FIXED_COSTS["Filter"],
+            "HPB": hpb,
+            "Steel": steel,
+            "Tracking": tracking_cost,
+            "Concrete": concrete,
+            "Softbottom": soft,
+            "Lights": lights_total,
+            "Transformer": transformer,
+            "Drain Kit": FIXED_COSTS["DrainKit"],
+            "Plumbing": FIXED_COSTS["Plumbing"],
+            "Heater": heater_cost,
+            "Filter": FIXED_COSTS["Filter"],
             "Pump": pump_cost,
             "Salt System (+salt)": FIXED_COSTS["SaltSystem"],
             "Winter Cover Area": winter_area,
             "Winter Cover Labour": FIXED_COSTS["WinterCoverLabour"],
-            "Permit": permit_cost, "Drive Time Labour": drive_cost,
+            "Permit": permit_cost,
+            "Drive Time Labour": drive_cost,
             "Total": total
         }
 
         st.success("✅ Estimate Ready")
-        st.write("### Summary", summary)
-        st.write("### Cost Breakdown", breakdown)
+        st.markdown("## **Summary**")
+        st.write(summary)
+        st.markdown("## **Cost Breakdown**")
+        st.write(breakdown)
 
         file_path = sanitize_filename(address) + "_Estimate.pdf"
         generate_pdf({'summary': summary, 'costs': breakdown}, file_path)
@@ -263,7 +276,7 @@ if submit:
             st.download_button("📥 Download Estimate PDF", f, file_name=file_path, mime="application/pdf")
 
         st.markdown("---")
-        st.markdown("### 📧 Email Estimate PDF")
+        st.markdown("## **📧 Email Estimate PDF**")
         recipient_email = st.text_input("Recipient Email Address", key="recipient_email")
         sender_email = st.text_input("Sender Email Address (e.g. your Gmail)", key="sender_email")
         sender_password = st.text_input("Sender Email Password or App Password", type="password", key="sender_password")
