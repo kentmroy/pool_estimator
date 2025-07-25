@@ -6,6 +6,7 @@ from fpdf import FPDF
 import smtplib
 from email.message import EmailMessage
 import os
+from PIL import Image  # for loading logo image more robustly
 
 # Load Google Maps API key securely
 gmaps = googlemaps.Client(key=st.secrets["googlemaps"]["api_key"])
@@ -95,7 +96,6 @@ def calculate_difficulty(distance_ft, access_in):
 def get_drive_km_and_time(origin, destination):
     try:
         if not destination.strip():
-            # Empty destination
             return 0, 0
         result = gmaps.distance_matrix(origins=origin, destinations=destination, mode="driving", units="metric")
         element = result['rows'][0]['elements'][0]
@@ -157,25 +157,30 @@ def send_email_with_attachment(sender_email, sender_password, recipient_email, s
 
 # ─── Streamlit UI ───────────────────────────────────────────────────────
 
-# Display your attached logo at the top
-st.image("logo.png", width=300)
+# Display uploaded logo image at top
+try:
+    logo_img = Image.open("logo.png")
+    st.image(logo_img, width=300)
+except Exception as e:
+    st.warning(f"Could not load logo image: {e}")
 
 # Main title in bold
 st.markdown("# **📐 Vinyl Pool Cost Estimator**")
 
 with st.form("pool_form"):
     st.markdown("## **Pool Information**")
-    address = st.text_input("Full Pool Address (e.g. 2168 Highway 54, Caledonia, ON)", "")
-    width = st.number_input("Pool Width (ft)", min_value=1.0, value=16.0)
-    length = st.number_input("Pool Length (ft)", min_value=1.0, value=32.0)
-    dist_to_pool = st.number_input("Distance from driveway to pool (ft)", min_value=0.0, value=65.0)
-    access_in = st.number_input("Pool Access Width (inches)", min_value=0.0, value=65.0)
-    steps = st.radio("Fibreglass steps?", ["Yes", "No"])
-    tracking = st.radio("Tracking Type", ["Side Mount Single Track", "Bullnose Single Track"])
-    lights = st.number_input("Number of Lights", min_value=0, step=1)
 
-    selected_pump = st.selectbox("Select Pump Model", options=list(PUMP_OPTIONS.keys()))
-    selected_heater = st.selectbox("Select Heater Model", options=list(HEATER_OPTIONS.keys()))
+    address = st.text_input("Full Pool Address (e.g. 2168 Highway 54, Caledonia, ON)", key="address")
+    width = st.number_input("Pool Width (ft)", min_value=1.0, value=16.0, key="width")
+    length = st.number_input("Pool Length (ft)", min_value=1.0, value=32.0, key="length")
+    dist_to_pool = st.number_input("Distance from driveway to pool (ft)", min_value=0.0, value=65.0, key="dist_to_pool")
+    access_in = st.number_input("Pool Access Width (inches)", min_value=0.0, value=65.0, key="access_in")
+    steps = st.radio("Fibreglass steps?", ["Yes", "No"], key="steps")
+    tracking = st.radio("Tracking Type", ["Side Mount Single Track", "Bullnose Single Track"], key="tracking")
+    lights = st.number_input("Number of Lights", min_value=0, step=1, key="lights")
+
+    selected_pump = st.selectbox("Select Pump Model", options=list(PUMP_OPTIONS.keys()), key="selected_pump")
+    selected_heater = st.selectbox("Select Heater Model", options=list(HEATER_OPTIONS.keys()), key="selected_heater")
 
     submit = st.form_submit_button("📄 Generate Estimate")
 
@@ -190,7 +195,7 @@ if submit:
         permit_cost = get_permit_cost(address)
         drive_km, drive_hr = get_drive_km_and_time("5491 Appleby Line, Burlington, ON", address)
         drive_cost = drive_hr * 35 * 26 * 4  # labor cost estimate
-        
+
         costs = COST_TABLE[category][difficulty]
         base_liner = INSTALL_COST[category]
         extra = (linear_feet * 22.12) if steps == "Yes" else (linear_feet * 22.12 + 300)
@@ -275,27 +280,30 @@ if submit:
         with open(file_path, "rb") as f:
             st.download_button("📥 Download Estimate PDF", f, file_name=file_path, mime="application/pdf")
 
+        # Separate email sending form with session keys for inputs to avoid rerun focus reset
         st.markdown("---")
         st.markdown("## **📧 Email Estimate PDF**")
-        recipient_email = st.text_input("Recipient Email Address", key="recipient_email")
-        sender_email = st.text_input("Sender Email Address (e.g. your Gmail)", key="sender_email")
-        sender_password = st.text_input("Sender Email Password or App Password", type="password", key="sender_password")
-        send_email = st.button("Send Email")
 
-        if send_email:
-            if not recipient_email or not sender_email or not sender_password:
-                st.error("Please enter recipient email, sender email and password.")
-            else:
-                with st.spinner("Sending email..."):
-                    success, message = send_email_with_attachment(
-                        sender_email=sender_email,
-                        sender_password=sender_password,
-                        recipient_email=recipient_email,
-                        subject="Vinyl Pool Cost Estimate",
-                        body=f"Please find attached the vinyl pool cost estimate for {address}.",
-                        attachment_path=file_path
-                    )
-                if success:
-                    st.success(message)
+        with st.form("email_form", clear_on_submit=False):
+            recipient_email = st.text_input("Recipient Email Address", key="recipient_email")
+            sender_email = st.text_input("Sender Email Address (e.g. your Gmail)", key="sender_email")
+            sender_password = st.text_input("Sender Email Password or App Password", type="password", key="sender_password")
+            send_email = st.form_submit_button("Send Email")
+
+            if send_email:
+                if not recipient_email or not sender_email or not sender_password:
+                    st.error("Please enter recipient email, sender email and password.")
                 else:
-                    st.error(message)
+                    with st.spinner("Sending email..."):
+                        success, message = send_email_with_attachment(
+                            sender_email=sender_email,
+                            sender_password=sender_password,
+                            recipient_email=recipient_email,
+                            subject="Vinyl Pool Cost Estimate",
+                            body=f"Please find attached the vinyl pool cost estimate for {address}.",
+                            attachment_path=file_path
+                        )
+                    if success:
+                        st.success(message)
+                    else:
+                        st.error(message)
