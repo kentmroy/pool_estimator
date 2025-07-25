@@ -158,7 +158,7 @@ def send_email_with_attachment(sender_email, sender_password, recipient_email, s
 # ─── Streamlit UI ───────────────────────────────────────────────────────
 
 # Display your attached logo at the top
-st.image("markstone-landscaping-logo-contact-us.jpg", width=300)
+st.image("logo.png", width=300)
 
 # Main title in bold
 st.markdown("# **📐 Vinyl Pool Cost Estimator**")
