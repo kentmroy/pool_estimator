@@ -10,13 +10,13 @@ gmaps = googlemaps.Client(key=st.secrets["googlemaps"]["api_key"])
 # ─── Constants ──────────────────────────────────────────────────────────
 COST_TABLE = {
     'Small': {
-        'Easy': {'Excavation': 3791, 'Pool Work': 5391, 'Liner': 821},
-        'Moderate': {'Excavation': 4140, 'Pool Work': 6860, 'Liner': 1535},
-        'Difficult': {'Excavation': 4488, 'Pool Work': 8269, 'Liner': 1178}
+        'Easy': {'Excavation': 3791, 'Pool Work': 5391, 'Liner': 1178},
+        'Moderate': {'Excavation': 4140, 'Pool Work': 6860, 'Liner': 1178},
+        'Difficult': {'Excavation': 4488, 'Pool Work': 8269, 'Liner': 1535}
     },
     'Medium': {
-        'Easy': {'Excavation': 3132, 'Pool Work': 4938, 'Liner': 1608},
-        'Moderate': {'Excavation': 4013, 'Pool Work': 7890, 'Liner': 1981},
+        'Easy': {'Excavation': 3132, 'Pool Work': 5391, 'Liner': 1608},
+        'Moderate': {'Excavation': 4140, 'Pool Work': 7890, 'Liner': 1981},
         'Difficult': {'Excavation': 4894, 'Pool Work': 10842, 'Liner': 2354}
     },
     'Large': {
